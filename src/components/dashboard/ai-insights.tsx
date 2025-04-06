@@ -1,8 +1,8 @@
-
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle, Lightbulb, Zap, Brain, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useWebSocket } from '@/components/websocket/websocket-service';
+import { useApiKeys } from '@/contexts/api-keys-context';
 
 type InsightType = 'tip' | 'alert' | 'insight' | 'prediction' | 'trend';
 
@@ -16,39 +16,50 @@ type Insight = {
   category?: string;
 };
 
-// Mock API call to get Grok AI insights
-const fetchInsights = async (): Promise<Insight[]> => {
+// Mock insights - moved outside component to prevent recreation
+const INITIAL_INSIGHTS: Insight[] = [
+  {
+    id: '1',
+    type: 'alert',
+    content: '5 students showing signs of distraction in the last 10 minutes.',
+    timestamp: new Date(),
+    confidence: 0.89,
+    source: 'grok',
+    category: 'attention'
+  },
+  {
+    id: '2',
+    type: 'tip',
+    content: 'Consider a short interactive activity to re-engage the class.',
+    timestamp: new Date(),
+    confidence: 0.92,
+    source: 'grok',
+    category: 'engagement'
+  },
+  {
+    id: '3',
+    type: 'insight',
+    content: 'Students engage more with visual content than text-based slides.',
+    timestamp: new Date(),
+    confidence: 0.78,
+    source: 'grok',
+    category: 'content'
+  }
+];
+
+// Optimized mock API call
+const fetchInsights = async (apiKey: string): Promise<Insight[]> => {
+  // Immediately return mock data for demo or empty API key
+  if (!apiKey || apiKey === 'demo') {
+    return INITIAL_INSIGHTS;
+  }
+  
   // In a real app, this would call the Grok AI service API
   return new Promise((resolve) => {
+    // Reduced timeout for faster initial loading
     setTimeout(() => {
       resolve([
-        {
-          id: '1',
-          type: 'alert',
-          content: '5 students showing signs of distraction in the last 10 minutes.',
-          timestamp: new Date(),
-          confidence: 0.89,
-          source: 'grok',
-          category: 'attention'
-        },
-        {
-          id: '2',
-          type: 'tip',
-          content: 'Consider a short interactive activity to re-engage the class.',
-          timestamp: new Date(),
-          confidence: 0.92,
-          source: 'grok',
-          category: 'engagement'
-        },
-        {
-          id: '3',
-          type: 'insight',
-          content: 'Students engage more with visual content than text-based slides.',
-          timestamp: new Date(),
-          confidence: 0.78,
-          source: 'grok',
-          category: 'content'
-        },
+        ...INITIAL_INSIGHTS,
         {
           id: '4',
           type: 'prediction',
@@ -68,7 +79,7 @@ const fetchInsights = async (): Promise<Insight[]> => {
           category: 'spatial'
         },
       ]);
-    }, 800);
+    }, 300); // Reduced from 800ms to 300ms
   });
 };
 
@@ -76,23 +87,28 @@ export const AiInsights = () => {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [loading, setLoading] = useState(true);
   const { lastMessage, fluvioConnected } = useWebSocket();
+  const { apiKeys } = useApiKeys();
 
   useEffect(() => {
     const getInsights = async () => {
       try {
-        const data = await fetchInsights();
+        // Display initial insights immediately
+        setInsights(INITIAL_INSIGHTS);
+        setLoading(false);
+        
+        // Then fetch complete insights
+        const data = await fetchInsights(apiKeys.grokApiKey);
         setInsights(data);
       } catch (error) {
         console.error('Failed to fetch Grok insights:', error);
-      } finally {
         setLoading(false);
       }
     };
 
     getInsights();
-  }, []);
+  }, [apiKeys.grokApiKey]);
 
-  // Process real-time insights from Fluvio stream
+  // Process real-time insights - keep this functionality
   useEffect(() => {
     if (lastMessage && lastMessage.type === 'stream_data' && fluvioConnected) {
       // In a real app, we would process incoming student activity data
