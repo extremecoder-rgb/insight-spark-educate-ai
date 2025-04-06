@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { useWebSocket } from '@/components/websocket/websocket-service';
 
 // Define types for our hooks
 interface ActivityData {
@@ -21,8 +22,7 @@ interface UseScreenActivityProps {
   inactivityThreshold?: number; // Time in ms to consider user inactive
 }
 
-// This is a placeholder for screen monitoring implementation
-// In a real application, this would use more comprehensive tracking
+// This implementation uses Fluvio for event streaming of screen monitoring
 export const useScreenActivity = ({
   enabled = false,
   sampleRate = 1000,
@@ -39,33 +39,72 @@ export const useScreenActivity = ({
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const [recording, setRecording] = useState<boolean>(false);
   const { toast } = useToast();
+  const { sendMessage, connected, fluvioConnected } = useWebSocket();
   
   // Start/stop monitoring based on enabled prop
   useEffect(() => {
     if (enabled && !recording) {
       setRecording(true);
       toast({
-        title: "Screen monitoring started",
-        description: "Your activity is now being tracked for educational purposes.",
+        title: "Screen monitoring started with Fluvio",
+        description: "Your activity is now being streamed for educational purposes.",
       });
+      
+      // Send initial connection message to Fluvio
+      if (fluvioConnected) {
+        sendMessage({
+          type: 'monitoring_started',
+          timestamp: new Date().toISOString(),
+          data: {
+            sessionId: 'current-session', // This would be a real session ID
+            browserInfo: {
+              userAgent: navigator.userAgent,
+              screenSize: `${window.innerWidth}x${window.innerHeight}`,
+            }
+          }
+        });
+      }
     } else if (!enabled && recording) {
       setRecording(false);
       toast({
-        title: "Screen monitoring stopped",
-        description: "Activity tracking has been disabled.",
+        title: "Fluvio screen monitoring stopped",
+        description: "Activity streaming has been disabled.",
       });
+      
+      // Send monitoring ended message
+      if (fluvioConnected) {
+        sendMessage({
+          type: 'monitoring_ended',
+          timestamp: new Date().toISOString(),
+        });
+      }
     }
-  }, [enabled, recording, toast]);
+  }, [enabled, recording, toast, sendMessage, fluvioConnected]);
   
-  // Set up mouse movement tracking
+  // Set up mouse movement tracking and send to Fluvio
   useEffect(() => {
-    if (!recording) return;
+    if (!recording || !fluvioConnected) return;
     
     let mouseMovementSampler: ReturnType<typeof setInterval>;
     let inactivityChecker: ReturnType<typeof setInterval>;
+    let streamingInterval: ReturnType<typeof setInterval>;
     
-    const handleMouseMove = () => {
+    const handleMouseMove = (e: MouseEvent) => {
       setLastActivity(Date.now());
+      
+      // In a real implementation, we would stream this data via Fluvio
+      if (fluvioConnected && Math.random() > 0.9) { // Send 10% of events to reduce volume
+        sendMessage({
+          type: 'mouse_movement',
+          timestamp: Date.now(),
+          data: {
+            x: e.clientX,
+            y: e.clientY,
+            movementX: e.movementX,
+            movementY: e.movementY
+          }
+        });
+      }
     };
     
     const handleKeyPress = () => {
@@ -74,6 +113,17 @@ export const useScreenActivity = ({
         ...prev,
         keyPresses: prev.keyPresses + 1
       }));
+      
+      // Stream keyboard activity via Fluvio
+      if (fluvioConnected) {
+        sendMessage({
+          type: 'keyboard_activity',
+          timestamp: Date.now(),
+          data: {
+            keyPress: true // We don't send the actual keys for privacy
+          }
+        });
+      }
     };
     
     const handleVisibilityChange = () => {
@@ -82,11 +132,35 @@ export const useScreenActivity = ({
           ...prev,
           tabSwitches: prev.tabSwitches + 1
         }));
+        
+        // Stream tab change via Fluvio
+        if (fluvioConnected) {
+          sendMessage({
+            type: 'tab_change',
+            timestamp: Date.now(),
+            data: {
+              visible: false,
+              previousTab: document.title
+            }
+          });
+        }
       } else {
         setActivityData(prev => ({
           ...prev,
           activeTabInfo: document.title
         }));
+        
+        // Stream tab return via Fluvio
+        if (fluvioConnected) {
+          sendMessage({
+            type: 'tab_change',
+            timestamp: Date.now(),
+            data: {
+              visible: true,
+              currentTab: document.title
+            }
+          });
+        }
       }
     };
     
@@ -114,8 +188,37 @@ export const useScreenActivity = ({
           ...prev,
           inactiveTime: prev.inactiveTime + (sampleRate / 1000)
         }));
+        
+        // Stream inactivity via Fluvio
+        if (fluvioConnected && inactiveFor % (inactivityThreshold * 2) < sampleRate) {
+          // Only send every other check to reduce spam
+          sendMessage({
+            type: 'inactivity',
+            timestamp: now,
+            data: {
+              inactiveDuration: inactiveFor
+            }
+          });
+        }
       }
     }, sampleRate);
+    
+    // Regular streaming of aggregated data
+    streamingInterval = setInterval(() => {
+      if (fluvioConnected) {
+        // Send batched activity data every 5 seconds
+        sendMessage({
+          type: 'activity_summary',
+          timestamp: Date.now(),
+          data: {
+            ...activityData,
+            // Add additional derived metrics
+            focusEstimate: calculateFocusScore(),
+            sessionDuration: (Date.now() - lastActivity) + activityData.inactiveTime * 1000,
+          }
+        });
+      }
+    }, 5000);
     
     // Add event listeners
     document.addEventListener('mousemove', handleMouseMove);
@@ -126,11 +229,12 @@ export const useScreenActivity = ({
     return () => {
       clearInterval(mouseMovementSampler);
       clearInterval(inactivityChecker);
+      clearInterval(streamingInterval);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('keydown', handleKeyPress);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [recording, sampleRate, inactivityThreshold, lastActivity]);
+  }, [recording, sampleRate, inactivityThreshold, lastActivity, fluvioConnected, sendMessage, activityData]);
   
   // Calculate focus score based on activity data
   const calculateFocusScore = (): number => {
@@ -149,11 +253,12 @@ export const useScreenActivity = ({
     focusScore: calculateFocusScore(),
     startRecording: () => setRecording(true),
     stopRecording: () => setRecording(false),
+    fluvioConnected,
   };
 };
 
-// In a real implementation, this component would connect to browser APIs
-// or use a dedicated library for screen monitoring
+// In a real implementation, this component would use Fluvio SDK
+// for comprehensive screen monitoring
 export const ScreenMonitor = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };

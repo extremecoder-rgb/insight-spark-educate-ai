@@ -6,6 +6,8 @@ interface WebSocketContextType {
   connected: boolean;
   lastMessage: any;
   sendMessage: (message: any) => void;
+  streamingStatus: 'active' | 'inactive' | 'connecting';
+  fluvioConnected: boolean;
 }
 
 // Create context with default values
@@ -13,43 +15,75 @@ const WebSocketContext = createContext<WebSocketContextType>({
   connected: false,
   lastMessage: null,
   sendMessage: () => {},
+  streamingStatus: 'inactive',
+  fluvioConnected: false
 });
 
-// This is a placeholder for WebSocket implementation
-// In a real app, this would connect to your backend WebSocket server
+// This is a placeholder for Fluvio WebSocket streaming implementation
+// In a real app, this would connect to your Fluvio event streaming service
 export const WebSocketProvider = ({ url, children }: { url: string; children: React.ReactNode }) => {
   const [connected, setConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<any>(null);
+  const [streamingStatus, setStreamingStatus] = useState<'active' | 'inactive' | 'connecting'>('inactive');
+  const [fluvioConnected, setFluvioConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   
   useEffect(() => {
-    // In a real app, this would be your actual WebSocket connection
-    console.log(`Connecting to WebSocket at ${url}`);
+    // In a real app, this would be your actual WebSocket connection to Fluvio
+    console.log(`Connecting to Fluvio streaming service at ${url}`);
     
-    // Simulate a connection
+    // Simulate a connection to Fluvio
+    setStreamingStatus('connecting');
     const connectTimeout = setTimeout(() => {
-      console.log('WebSocket connected');
+      console.log('Fluvio stream connected');
       setConnected(true);
-    }, 1000);
+      setFluvioConnected(true);
+      setStreamingStatus('active');
+      
+      // Simulate receiving periodic stream data
+      const streamInterval = setInterval(() => {
+        if (Math.random() > 0.3) { // 70% chance of getting stream data
+          const streamData = {
+            type: 'stream_data',
+            timestamp: new Date().toISOString(),
+            source: 'fluvio_stream',
+            topic: 'student_activity',
+            data: {
+              studentId: `student${Math.floor(Math.random() * 10) + 1}`,
+              activityType: ['mouse_move', 'keyboard', 'tab_change', 'scroll', 'click'][Math.floor(Math.random() * 5)],
+              intensity: Math.random(),
+              timestamp: new Date().toISOString()
+            }
+          };
+          setLastMessage(streamData);
+        }
+      }, 5000); // Every 5 seconds
+      
+      // Clean up stream interval
+      return () => clearInterval(streamInterval);
+    }, 1500);
     
-    // Mock WebSocket interface
+    // Mock WebSocket interface with Fluvio extensions
     socketRef.current = {
       send: (data: string) => {
-        console.log('WebSocket sending:', data);
+        console.log('Fluvio stream sending:', data);
         
         // Simulate receiving a response after sending a message
         setTimeout(() => {
           const response = {
             type: 'response',
             timestamp: new Date().toISOString(),
+            source: 'fluvio',
             data: { received: true, original: JSON.parse(data) }
           };
           setLastMessage(response);
         }, 300);
       },
       close: () => {
-        console.log('WebSocket closed');
+        console.log('Fluvio stream closed');
         setConnected(false);
+        setFluvioConnected(false);
+        setStreamingStatus('inactive');
       }
     } as unknown as WebSocket;
     
@@ -62,23 +96,29 @@ export const WebSocketProvider = ({ url, children }: { url: string; children: Re
     };
   }, [url]);
   
-  // Function to send messages over WebSocket
+  // Function to send messages over Fluvio stream
   const sendMessage = (message: any) => {
     if (socketRef.current && connected) {
       socketRef.current.send(JSON.stringify(message));
     } else {
-      console.warn('WebSocket not connected, unable to send message');
+      console.warn('Fluvio stream not connected, unable to send message');
     }
   };
   
   return (
-    <WebSocketContext.Provider value={{ connected, lastMessage, sendMessage }}>
+    <WebSocketContext.Provider value={{ 
+      connected, 
+      lastMessage, 
+      sendMessage, 
+      streamingStatus,
+      fluvioConnected
+    }}>
       {children}
     </WebSocketContext.Provider>
   );
 };
 
-// Custom hook for using the WebSocket context
+// Custom hook for using the Fluvio stream context
 export const useWebSocket = () => {
   const context = useContext(WebSocketContext);
   if (!context) {
