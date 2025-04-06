@@ -1,6 +1,7 @@
 
 // This is a placeholder service that simulates integration with Grok AI
 // In a production environment, this would connect to the actual Grok AI service
+import { useApiKeys } from '@/contexts/api-keys-context';
 
 export interface AiAnalysisProps {
   screenActivity?: any;
@@ -21,9 +22,28 @@ export interface AiInsightResult {
   distractionSources?: string[];
 }
 
+// Function to check if the API key is being used
+export const useGrokApiKey = () => {
+  const { apiKeys } = useApiKeys();
+  return {
+    isConfigured: !!apiKeys.grokApiKey,
+    apiKey: apiKeys.grokApiKey
+  };
+};
+
 // Simulate Grok AI analysis function
 export const analyzeStudentActivity = async (props: AiAnalysisProps): Promise<AiInsightResult> => {
   console.log('Analyzing student activity with Grok AI:', props);
+  
+  // Check if we have an API key from localStorage
+  const apiKey = localStorage.getItem('grokApiKey');
+  
+  if (apiKey) {
+    console.log('Using Grok AI API key for analysis:', apiKey.substring(0, 4) + '...');
+    // In a real implementation, this would use the API key to call the Grok AI service
+  } else {
+    console.log('No Grok AI API key found. Using mock response.');
+  }
   
   // This would actually call the Grok AI API in production
   // Simulate API delay

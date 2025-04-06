@@ -1,5 +1,6 @@
 
 import { useEffect, useState, useRef, createContext, useContext } from 'react';
+import { useApiKeys } from '@/contexts/api-keys-context';
 
 // Define WebSocket context type
 interface WebSocketContextType {
@@ -27,10 +28,20 @@ export const WebSocketProvider = ({ url, children }: { url: string; children: Re
   const [streamingStatus, setStreamingStatus] = useState<'active' | 'inactive' | 'connecting'>('inactive');
   const [fluvioConnected, setFluvioConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const { apiKeys } = useApiKeys();
   
   useEffect(() => {
     // In a real app, this would be your actual WebSocket connection to Fluvio
     console.log(`Connecting to Fluvio streaming service at ${url}`);
+    
+    // Check if API key is configured
+    if (!apiKeys.fluvioApiKey) {
+      console.log('Fluvio API key not configured. Using mock implementation.');
+      // Continue with mock implementation
+    } else {
+      console.log('Using Fluvio API key for authentication:', apiKeys.fluvioApiKey.substring(0, 4) + '...');
+      // In a real implementation, we would use the API key for authentication
+    }
     
     // Simulate a connection to Fluvio
     setStreamingStatus('connecting');
@@ -94,7 +105,7 @@ export const WebSocketProvider = ({ url, children }: { url: string; children: Re
         socketRef.current.close();
       }
     };
-  }, [url]);
+  }, [url, apiKeys.fluvioApiKey]);
   
   // Function to send messages over Fluvio stream
   const sendMessage = (message: any) => {
